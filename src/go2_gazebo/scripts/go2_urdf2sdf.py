@@ -195,6 +195,18 @@ def add_sensor(parent, kind, cfg, urdf, extra):
         sub(s, 'topic', 'imu')
         sub(s, 'always_on', '1')
         sub(s, 'update_rate', '100')
+        # Per-axis gaussian noise (gz-sim schema, cf. magnetometer in the
+        # official sensors.sdf). Values are larger than the URDF's optimistic
+        # 0.0002/0.0005 so /imu/data looks like a real MEMS unit.
+        imu = sub(s, 'imu')
+        for grp, std in (('angular_velocity', '0.003'),
+                         ('linear_acceleration', '0.05')):
+            g = sub(imu, grp)
+            for ax in ('x', 'y', 'z'):
+                a = sub(g, ax)
+                nz = sub(a, 'noise', type='gaussian')
+                sub(nz, 'mean', '0')
+                sub(nz, 'stddev', std)
     elif kind == 'lidar':
         s = sub(parent, 'sensor', name=cfg['name'], type='gpu_lidar')
         # mount above the trunk shell so the robot does not see itself

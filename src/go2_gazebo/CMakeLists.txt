@@ -30,8 +30,8 @@ target_link_libraries(go2_driver PUBLIC
 install(TARGETS go2_driver
   DESTINATION lib/${PROJECT_NAME})
 
-# Scenery world, launch files, bridge config and the URDF->SDF converter
-install(DIRECTORY worlds launch config scripts
+# Scenery world, launch files, bridge config, scripts, sample floor plan
+install(DIRECTORY worlds launch config scripts scene
   DESTINATION share/${PROJECT_NAME})
 
 ament_package()

@@ -21,7 +21,9 @@
   direction: ROS_TO_GZ
 
 # ---- sensors: gz -> ROS ----
-- ros_topic_name: "/scan"
+# gz-sim's GPU lidar ignores SDF <noise>, so the bridge lands the clean echo on
+# /scan_raw and the go2_scan_noise relay republishes a noised /scan.
+- ros_topic_name: "/scan_raw"
   gz_topic_name: "/scan"
   ros_type_name: "sensor_msgs/msg/LaserScan"
   gz_type_name: "gz.msgs.LaserScan"
