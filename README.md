@@ -99,12 +99,15 @@ RTF 仍 0.67），瓶颈是单线程物理步长（见"配置档位"段）。若
 当前巡检仿真在本机已能实时（full 档 RTF≈0.98）；云服务器留给**将来 C：真实物理行走**
 （接触求解重一个量级、需 1ms 级步长和调参时长）或想并行多开/超大场景时。仓库自带
 Docker 工具链（镜像 = ubuntu:26.04 + ROS Lyrical 纯工具链，代码 bind-mount，换机零
-重装、改代码不用重建镜像），用法见 `docker/README-CLOUD.md`：
+重装、改代码不用重建镜像），`cloud_run.sh` 也透传了**同一套配置旋钮**
+（`-P profile` / `-t phys_step`，见下），云上可按档位跑同一套代码。用法见 `docker/README-CLOUD.md`：
 
 ```bash
 bash scripts/cloud_setup.sh            # 一次性装 docker（GPU 机加 --gpu）
 bash scripts/cloud_run.sh -m selfcheck # 首次构建 + 工具链自检
-bash scripts/cloud_run.sh -m bench -A 45   # 自动压测（RTF/话题/内存），45 分钟后宿主机自动关机
+bash scripts/cloud_run.sh -m bench -A 45        # 自动压测（RTF/话题/内存），45 分钟后宿主机自动关机
+bash scripts/cloud_run.sh -m bench -P lite -A 45  # 云上切 lite 档压测
+bash scripts/cloud_run.sh -m bench -P min -t 0.001 -A 60  # min 传感器 + 1ms 高保真步长
 bash scripts/cloud_run.sh -m gui       # 浏览器 noVNC 看仿真画面（:6080）
 ```
 

@@ -7,7 +7,8 @@
 #   MODE=selfcheck  print toolchain/GL versions and exit
 #
 # Environment (optional): DEMO (patrol seconds), SCENE_MAP / SCENE_RES
-# (own floor plan), SCAN_NOISE (laser noise stddev), SKIP_BUILD=1.
+# (own floor plan), SCAN_NOISE (laser noise stddev), PROFILE (sensor tier
+# full|lite|min), PHYS_STEP (physics <max_step_size> s override), SKIP_BUILD=1.
 
 set -uo pipefail
 
@@ -16,6 +17,8 @@ DEMO="${DEMO:-0.0}"
 SCENE_MAP="${SCENE_MAP:-}"
 SCENE_RES="${SCENE_RES:-0.30}"
 SCAN_NOISE="${SCAN_NOISE:-0.015}"
+PROFILE="${PROFILE:-full}"
+PHYS_STEP="${PHYS_STEP:-}"
 SKIP_BUILD="${SKIP_BUILD:-0}"
 WS=/workspace
 
@@ -73,8 +76,9 @@ build_ws() {
 
 launch_args() {
     # "$@" are extra launch substitutions; first decides the GUI.
-    local args=("$1" "demo:=$DEMO")
+    local args=("$1" "demo:=$DEMO" "profile:=$PROFILE")
     [ -n "$SCENE_MAP" ] && args+=("scene_map:=$SCENE_MAP" "scene_res:=$SCENE_RES")
+    [ -n "$PHYS_STEP" ] && args+=("phys_step:=$PHYS_STEP")
     args+=("${@:2}")
     printf '%s\n' "${args[@]}"
 }

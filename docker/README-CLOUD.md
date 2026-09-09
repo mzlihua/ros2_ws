@@ -1,6 +1,10 @@
 # 云端按量跑 Go2 仿真（Docker 一键环境）
 
-本机（Intel Iris Xe 集显 / 内存紧张）跑重负载仿真太吃力，需要重仿真时换**按量计费云服务器**。
+当前的运动学巡检仿真在本机已能**实时**（full 档 RTF≈0.98，见仓库根 `README.md`），平时在本机跑即可。
+云服务器留给**更重的需求**：将来 C（真实物理接触行走，1ms 级步长 + 长时间调参）、并行多开/超大场景，
+或本机集显/内存吃紧时的临时算力。Docker 工具链与本地 launch 共用**同一套配置旋钮**（`-P` 传感器档位、
+`-t` 物理步长），云上可以按档位跑同一套代码。
+
 整套代码基于 **Ubuntu 26.04 + ROS 2 Lyrical + gz-sim 10**——多数云服务器出厂是 Ubuntu 22.04
 （对应 ROS Humble / gz-sim 6，**跑不起这套代码**）。所以这里用 **Docker 镜像 = 纯工具链**：
 镜像内只装环境，你的代码目录 bind-mount 进去，**换任何一台服务器都零重装、改代码不用重建镜像**。
@@ -31,6 +35,12 @@ bash scripts/cloud_run.sh -m bench -A 45
 # 4) 想看画面（浏览器远程桌面）——需要在安全组放行 6080 端口
 bash scripts/cloud_run.sh -m gui -A 60
 #    然后浏览器打开:  http://<服务器公网IP>:6080/vnc.html
+
+# 档位/步长（与本地 launch 同一套旋钮，见仓库根 README.md「配置档位」）：
+bash scripts/cloud_run.sh -m bench -P lite      # 去 depth、rgb 320x240@15（更省）
+bash scripts/cloud_run.sh -m bench -P min       # 仅 lidar+imu（无相机），最快
+bash scripts/cloud_run.sh -m bench -t 0.001     # 高保真物理步长（接触/调参，RTF 会降）
+#  -P 缺省 full；-t 留空 = 用世界缺省 0.002（本机实测该步长 RTF≈1.0，传感器裁剪不拖 RTF）
 ```
 
 `cloud_run.sh` 所有参数：`bash scripts/cloud_run.sh -h`
@@ -42,6 +52,8 @@ bash scripts/cloud_run.sh -m gui -A 60
 | `-p` | 自定义楼层平面图（PGM），相对仓库根 | `-p scene/sample_floorplan.pgm` |
 | `-r` | 平面图分辨率 m/像素 | `-r 0.30` |
 | `-s` | 激光噪声 stddev | `-s 0.015` |
+| `-P` | 传感器档位 `full` / `lite` / `min`（与 launch `profile:=` 一致） | `-P lite` |
+| `-t` | 物理步长秒覆盖（留空=世界缺省 0.002；`0.001` 高保真） | `-t 0.001` |
 | `-A` | N 分钟后宿主机自动 **poweroff**（计费护栏） | `-A 45` |
 | `-g` | 透传 NVIDIA GPU（`--gpus all`） | `-m gui -g` |
 | `-n` | 自定义镜像名 | `-n go2-cloud:test` |
@@ -93,7 +105,7 @@ drive : odom x 0.000 -> 1.9 m at 0.5 m/s over 4 s (OK)   # 巡逻链路活着
 VERDICT: PASS
 ```
 `RTF < 0.85` 的瓶颈是**单线程物理步长**，不是传感器（本机实测去掉全部相机 RTF 仍 0.67@1ms）
-——先 `phys_step:=0.002` 重跑；物理线程吃单核，真不够再升 CPU/换带更高主频的机器；内存低于几百 MB 时换大内存规格。
+——先 `-t 0.002`（云）/ `phys_step:=0.002`（本机 launch）重跑；物理线程吃单核，真不够再升 CPU/换带更高主频的机器；内存低于几百 MB 时换大内存规格。
 
 ## 常见坑
 

@@ -13,6 +13,8 @@
 #   bash scripts/cloud_run.sh -m headless -d 20       # run sim 20 s demo, headless
 #   bash scripts/cloud_run.sh -m gui -g               # + NVIDIA GPU passthrough
 #   bash scripts/cloud_run.sh -p scene/sample_floorplan.pgm -m bench   # own floor plan
+#   bash scripts/cloud_run.sh -m bench -P lite        # sensor tier lite (see below)
+#   bash scripts/cloud_run.sh -m bench -P min -t 0.001  # min sensors, fine physics step
 
 set -euo pipefail
 
@@ -23,6 +25,8 @@ DEMO=0.0
 SCENE_MAP=
 SCENE_RES=0.30
 SCAN_NOISE=0.015
+PROFILE=full
+PHYS_STEP=
 GPU=0
 DETACH=0
 AUTO_OFF=
@@ -30,13 +34,15 @@ SKIP_BUILD=0
 
 usage() { sed -n '2,/^$/p' "$0"; exit "${1:-0}"; }
 
-while getopts ":m:d:p:r:s:A:n:gDh" o; do
+while getopts ":m:d:p:r:s:P:t:A:n:gDh" o; do
     case "$o" in
         m) MODE=$OPTARG ;;
         d) DEMO=$OPTARG ;;
         p) SCENE_MAP=$OPTARG ;;
         r) SCENE_RES=$OPTARG ;;
         s) SCAN_NOISE=$OPTARG ;;
+        P) PROFILE=$OPTARG ;;
+        t) PHYS_STEP=$OPTARG ;;
         A) AUTO_OFF=$OPTARG ;;
         n) IMG=$OPTARG ;;
         g) GPU=1 ;;
@@ -47,6 +53,13 @@ while getopts ":m:d:p:r:s:A:n:gDh" o; do
 done
 shift $((OPTIND - 1))
 case "$MODE" in gui|headless|bench|selfcheck) ;; *) echo "bad mode: $MODE"; usage 2 ;; esac
+case "$PROFILE" in full|lite|min) ;; *) echo "bad profile: $PROFILE (full|lite|min)"; usage 2 ;; esac
+if [ -n "$PHYS_STEP" ]; then
+    case "$PHYS_STEP" in
+        ''|*[!0-9.]*) echo "bad phys_step: $PHYS_STEP (e.g. 0.002 or 0.001)"; usage 2 ;;
+        *) ;;
+    esac
+fi
 
 command -v docker >/dev/null 2>&1 || { echo "docker missing -- run scripts/cloud_setup.sh first"; exit 1; }
 
@@ -86,6 +99,7 @@ docker run "${IT[@]}" "${DET[@]}" --rm \
     -e MODE="$MODE" -e DEMO="$DEMO" \
     -e SCENE_MAP="$SCENE_MAP" -e SCENE_RES="$SCENE_RES" \
     -e SCAN_NOISE="$SCAN_NOISE" -e SKIP_BUILD="$SKIP_BUILD" \
+    -e PROFILE="$PROFILE" -e PHYS_STEP="$PHYS_STEP" \
     "$IMG"
 set +x
 
