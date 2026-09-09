@@ -1,0 +1,9 @@
+# Docker build context trims (the toolchain image never COPYs the repo, but
+# keep the context small anyway).
+build/
+install/
+log/
+.git/
+**/__pycache__/
+*.log
+src/_deprecated/
