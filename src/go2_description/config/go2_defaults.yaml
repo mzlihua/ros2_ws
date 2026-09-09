@@ -1,0 +1,71 @@
+# Central defaults for the Unitree Go2 simulation.
+# These values are consumed by launch files and the standing-pose node; they are
+# intentionally kept here so names stay consistent across description, gazebo,
+# bridge and bringup without being scattered through launch code.
+
+go2:
+  model_name: "go2"
+  world_name: "go2_basic"
+
+  # Initial spawn pose of the robot base in the world.
+  initial_pose:
+    x: 0.0
+    y: 0.0
+    z: 0.4          # drop-in height; the body settles onto the feet
+    roll: 0.0
+    pitch: 0.0
+    yaw: 0.0
+
+  # Nominal standing pose (rad) for the 12 actuated joints, in trajectory order.
+  # These are approximate and are intended to be tuned during the locomotion phase;
+  # phase 1 only needs the robot held upright so the four sensors stream real data.
+  joint_order:
+    - FL_hip_joint
+    - FL_thigh_joint
+    - FL_calf_joint
+    - FR_hip_joint
+    - FR_thigh_joint
+    - FR_calf_joint
+    - RL_hip_joint
+    - RL_thigh_joint
+    - RL_calf_joint
+    - RR_hip_joint
+    - RR_thigh_joint
+    - RR_calf_joint
+  standing_pose:
+    FL_hip_joint: 0.0
+    FL_thigh_joint: 0.9
+    FL_calf_joint: -1.8
+    FR_hip_joint: 0.0
+    FR_thigh_joint: 0.9
+    FR_calf_joint: -1.8
+    RL_hip_joint: 0.0
+    RL_thigh_joint: 0.9
+    RL_calf_joint: -1.8
+    RR_hip_joint: 0.0
+    RR_thigh_joint: 0.9
+    RR_calf_joint: -1.8
+
+  # ROS-side topic/frame contract (sensor topics).
+  topics:
+    joint_states: "/joint_states"
+    imu: "/imu/data"
+    scan: "/scan"
+    rgb_image: "/camera/color/image_raw"
+    rgb_info: "/camera/color/camera_info"
+    depth_image: "/camera/depth/image_raw"
+    depth_info: "/camera/depth/camera_info"
+    depth_points: "/camera/depth/points"
+
+  frames:
+    imu: "imu"
+    lidar: "base"
+    rgb_optical: "front_camera_optical"
+    depth_optical: "front_camera_optical"
+
+  # Gazebo Sim sensor topic names (relative to each sensor's scope).
+  sensor_topics:
+    imu: "imu"
+    lidar: "scan"
+    rgb: "rgb/image"
+    depth: "depth/image"

@@ -1,0 +1,17 @@
+go2_description
+================
+
+The URDF description and DAE meshes in the `urdf/` and `dae/` directories are
+derived from the Unitree Go2 robot model distributed in the `unitree_ros`
+repository (https://github.com/unitreerobotics/unitree_ros), specifically the
+`robots/go2_description` package.
+
+Original copyright and license (BSD-3-Clause):
+
+  Copyright (c) 2016-2024 HangZhou YuShu TECHNOLOGY CO.,LTD. ("Unitree Robotics")
+  All rights reserved.
+
+See LICENSE for the full BSD-3-Clause license text. Modifications here adapt the
+model for ROS 2 (ament) and add Gazebo Sim native sensor/system extensions; they
+do not change the underlying kinematic, inertial, or collision description of the
+robot.

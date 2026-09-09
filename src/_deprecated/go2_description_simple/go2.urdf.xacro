@@ -1,0 +1,303 @@
+<?xml version="1.0"?>
+<!--
+  Unitree Go2 quadruped — self-contained description for ROS 2.
+  No CHAMP / ros2_control dependency. Kinematics & inertias mirror the
+  public Go2 description (see THIRD_PARTY_NOTICES.md).
+
+  Frames: base_link (root) -> trunk ; trunk -> 4 legs (hip/thigh/calf/foot)
+  plus imu/lidar/camera sensor mounts.
+
+  Usage:
+    xacro go2.urdf.xacro use_meshes:=true   > go2.urdf
+-->
+<robot name="go2" xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+  <xacro:arg name="use_meshes" default="true"/>
+  <xacro:property name="UM" value="${'$(arg use_meshes)'.lower() == 'true'}"/>
+
+  <xacro:include filename="$(find go2_description)/urdf/const.xacro"/>
+
+  <!-- ================= materials ================= -->
+  <material name="go2_black">
+    <color rgba="0.05 0.05 0.05 1.0"/>
+  </material>
+  <material name="go2_silver">
+    <color rgba="0.6 0.6 0.62 1.0"/>
+  </material>
+  <material name="go2_white">
+    <color rgba="0.95 0.95 0.95 1.0"/>
+  </material>
+  <material name="go2_red">
+    <color rgba="0.8 0.1 0.1 1.0"/>
+  </material>
+
+  <!-- ================= leg macro ================= -->
+  <!-- mirror: +1 left / -1 right ; front_hind: +1 front / -1 rear -->
+  <xacro:macro name="go2_leg" params="name mirror mirror_dae front_hind">
+
+    <!-- hip: abduction / roll about x -->
+    <joint name="${name}_hip_joint" type="revolute">
+      <origin rpy="0 0 0" xyz="${leg_offset_x*front_hind} ${leg_offset_y*mirror} 0"/>
+      <parent link="trunk"/>
+      <child link="${name}_hip_link"/>
+      <axis xyz="1 0 0"/>
+      <dynamics damping="${damping}" friction="${friction}"/>
+      <limit effort="${hip_torque_max}" velocity="${hip_velocity_max}"
+             lower="${hip_position_min*mirror}" upper="${hip_position_max*mirror}"/>
+    </joint>
+
+    <link name="${name}_hip_link">
+      <visual>
+        <xacro:if value="${UM}">
+          <xacro:if value="${(mirror_dae == True) and (front_hind == True)}">
+            <origin rpy="0 0 0" xyz="0 0 0"/>
+          </xacro:if>
+          <xacro:if value="${(mirror_dae == False) and (front_hind == True)}">
+            <origin rpy="${PI} 0 0" xyz="0 0 0"/>
+          </xacro:if>
+          <xacro:if value="${(mirror_dae == True) and (front_hind == False)}">
+            <origin rpy="0 ${PI} 0" xyz="0 0 0"/>
+          </xacro:if>
+          <xacro:if value="${(mirror_dae == False) and (front_hind == False)}">
+            <origin rpy="${PI} ${PI} 0" xyz="0 0 0"/>
+          </xacro:if>
+          <geometry>
+            <mesh filename="file://$(find go2_description)/meshes/hip.dae" scale="1 1 1"/>
+          </geometry>
+        </xacro:if>
+        <xacro:unless value="${UM}">
+          <geometry>
+            <box size="0.08 0.04 0.05"/>
+          </geometry>
+          <material name="go2_silver"/>
+        </xacro:unless>
+      </visual>
+      <collision>
+        <origin rpy="${PI/2.0} 0 0" xyz="0 ${hip_offset*mirror} 0"/>
+        <geometry>
+          <cylinder length="${hip_length}" radius="${hip_radius}"/>
+        </geometry>
+      </collision>
+      <inertial>
+        <origin rpy="0 0 0" xyz="${hip_com_x*front_hind} ${hip_com_y*mirror} ${hip_com_z}"/>
+        <mass value="${hip_mass}"/>
+        <inertia ixx="${hip_ixx}" ixy="${hip_ixy*mirror*front_hind}" ixz="${hip_ixz*front_hind}"
+                 iyy="${hip_iyy}" iyz="${hip_iyz*mirror}" izz="${hip_izz}"/>
+      </inertial>
+    </link>
+
+    <!-- thigh / pitch about y -->
+    <joint name="${name}_upper_leg_joint" type="revolute">
+      <origin rpy="0 0 0" xyz="0 ${thigh_offset*mirror} 0"/>
+      <parent link="${name}_hip_link"/>
+      <child link="${name}_upper_leg_link"/>
+      <axis xyz="0 1 0"/>
+      <dynamics damping="${damping}" friction="${friction}"/>
+      <limit effort="${thigh_torque_max}" velocity="${thigh_velocity_max}"
+             lower="${thigh_position_min}" upper="${thigh_position_max}"/>
+    </joint>
+
+    <link name="${name}_upper_leg_link">
+      <visual>
+        <origin rpy="0 0 0" xyz="0 0 0"/>
+        <geometry>
+          <xacro:if value="${UM}">
+            <xacro:if value="${mirror_dae}">
+              <mesh filename="file://$(find go2_description)/meshes/thigh.dae" scale="1 1 1"/>
+            </xacro:if>
+            <xacro:unless value="${mirror_dae}">
+              <mesh filename="file://$(find go2_description)/meshes/thigh_mirror.dae" scale="1 1 1"/>
+            </xacro:unless>
+          </xacro:if>
+          <xacro:unless value="${UM}">
+            <box size="0.05 ${thigh_width} ${thigh_length}"/>
+          </xacro:unless>
+        </geometry>
+      </visual>
+      <collision>
+        <origin rpy="0 ${PI/2.0} 0" xyz="0 0 ${-thigh_length/2.0}"/>
+        <geometry>
+          <box size="${thigh_length} ${thigh_width} ${thigh_height}"/>
+        </geometry>
+      </collision>
+      <inertial>
+        <origin rpy="0 0 0" xyz="${thigh_com_x} ${thigh_com_y*mirror} ${thigh_com_z}"/>
+        <mass value="${thigh_mass}"/>
+        <inertia ixx="${thigh_ixx}" ixy="${thigh_ixy*mirror}" ixz="${thigh_ixz}"
+                 iyy="${thigh_iyy}" iyz="${thigh_iyz*mirror}" izz="${thigh_izz}"/>
+      </inertial>
+    </link>
+
+    <!-- calf / pitch about y -->
+    <joint name="${name}_lower_leg_joint" type="revolute">
+      <origin rpy="0 0 0" xyz="0 0 ${-thigh_length}"/>
+      <parent link="${name}_upper_leg_link"/>
+      <child link="${name}_lower_leg_link"/>
+      <axis xyz="0 1 0"/>
+      <dynamics damping="${damping}" friction="${friction}"/>
+      <limit effort="${calf_torque_max}" velocity="${calf_velocity_max}"
+             lower="${calf_position_min}" upper="${calf_position_max}"/>
+    </joint>
+
+    <link name="${name}_lower_leg_link">
+      <visual>
+        <origin rpy="0 0 0" xyz="0 0 0"/>
+        <geometry>
+          <xacro:if value="${UM}">
+            <mesh filename="file://$(find go2_description)/meshes/calf.dae" scale="1 1 1"/>
+          </xacro:if>
+          <xacro:unless value="${UM}">
+            <box size="0.05 ${calf_width} ${calf_length}"/>
+          </xacro:unless>
+        </geometry>
+      </visual>
+      <collision>
+        <origin rpy="0 ${PI/2.0} 0" xyz="0 0 ${-calf_length/2.0}"/>
+        <geometry>
+          <box size="${calf_length} ${calf_width} ${calf_height}"/>
+        </geometry>
+      </collision>
+      <inertial>
+        <origin rpy="0 0 0" xyz="${calf_com_x} ${calf_com_y} ${calf_com_z}"/>
+        <mass value="${calf_mass}"/>
+        <inertia ixx="${calf_ixx}" ixy="${calf_ixy}" ixz="${calf_ixz}"
+                 iyy="${calf_iyy}" iyz="${calf_iyz}" izz="${calf_izz}"/>
+      </inertial>
+    </link>
+
+    <!-- foot -->
+    <joint name="${name}_foot_joint" type="fixed">
+      <origin rpy="0 0 0" xyz="0 0 ${-calf_length}"/>
+      <parent link="${name}_lower_leg_link"/>
+      <child link="${name}_foot_link"/>
+    </joint>
+    <link name="${name}_foot_link">
+      <visual>
+        <geometry><sphere radius="${foot_radius-0.01}"/></geometry>
+      </visual>
+      <collision>
+        <geometry><sphere radius="${foot_radius}"/></geometry>
+      </collision>
+      <inertial>
+        <mass value="${foot_mass}"/>
+        <inertia ixx="${(2*foot_mass)/5.0*(foot_radius*foot_radius)}" ixy="0.0" ixz="0.0"
+                 iyy="${(2*foot_mass)/5.0*(foot_radius*foot_radius)}" iyz="0.0"
+                 izz="${(2*foot_mass)/5.0*(foot_radius*foot_radius)}"/>
+      </inertial>
+    </link>
+  </xacro:macro>
+
+  <!-- ================= root / trunk ================= -->
+  <link name="base_link">
+    <visual>
+      <geometry><box size="0.001 0.001 0.001"/></geometry>
+    </visual>
+    <inertial>
+      <mass value="0.001"/>
+      <inertia ixx="1e-6" iyy="1e-6" izz="1e-6"/>
+    </inertial>
+  </link>
+
+  <joint name="floating_base" type="fixed">
+    <origin rpy="0 0 0" xyz="0 0 0"/>
+    <parent link="base_link"/>
+    <child link="trunk"/>
+  </joint>
+
+  <link name="trunk">
+    <visual>
+      <xacro:if value="${UM}">
+        <geometry>
+          <mesh filename="file://$(find go2_description)/meshes/trunk.dae" scale="1 1 1"/>
+        </geometry>
+      </xacro:if>
+      <xacro:unless value="${UM}">
+        <geometry>
+          <box size="${trunk_length} ${trunk_width} ${trunk_height}"/>
+        </geometry>
+        <material name="go2_black"/>
+      </xacro:unless>
+    </visual>
+    <collision>
+      <geometry>
+        <box size="${trunk_length} ${trunk_width} ${trunk_height}"/>
+      </geometry>
+    </collision>
+    <inertial>
+      <origin rpy="0 0 0" xyz="${trunk_com_x} ${trunk_com_y} ${trunk_com_z}"/>
+      <mass value="${trunk_mass}"/>
+      <inertia ixx="${trunk_ixx}" ixy="${trunk_ixy}" ixz="${trunk_ixz}"
+               iyy="${trunk_iyy}" iyz="${trunk_iyz}" izz="${trunk_izz}"/>
+    </inertial>
+  </link>
+
+  <!-- ================= sensor mounts (fixed frames) ================= -->
+  <joint name="imu_joint" type="fixed">
+    <origin rpy="0 0 0" xyz="0 0 0"/>
+    <parent link="trunk"/>
+    <child link="imu_link"/>
+  </joint>
+  <link name="imu_link">
+    <inertial><mass value="0.001"/>
+      <inertia ixx="1e-6" iyy="1e-6" izz="1e-6"/></inertial>
+    <visual>
+      <geometry><box size="0.001 0.001 0.001"/></geometry>
+    </visual>
+  </link>
+
+  <!-- 2D LiDAR at front-top of trunk -->
+  <joint name="lidar2d_joint" type="fixed">
+    <origin rpy="0 0 0" xyz="0.15 0 0.10"/>
+    <parent link="trunk"/>
+    <child link="lidar2d_link"/>
+  </joint>
+  <link name="lidar2d_link">
+    <inertial><mass value="0.01"/>
+      <inertia ixx="1e-5" iyy="1e-5" izz="1e-5"/></inertial>
+    <visual>
+      <origin rpy="0 0 0" xyz="0 0 0"/>
+      <geometry>
+        <xacro:if value="${UM}">
+          <mesh filename="file://$(find go2_description)/meshes/hokuyo.dae" scale="1 1 1"/>
+        </xacro:if>
+        <xacro:unless value="${UM}">
+          <box size="0.06 0.06 0.04"/>
+        </xacro:unless>
+      </geometry>
+    </visual>
+  </link>
+
+  <!-- RGB camera at front "head" looking +x -->
+  <joint name="camera_joint" type="fixed">
+    <origin rpy="0 0 0" xyz="0.315 0 0.02"/>
+    <parent link="trunk"/>
+    <child link="camera_link"/>
+  </joint>
+  <link name="camera_link">
+    <inertial><mass value="0.01"/>
+      <inertia ixx="1e-5" iyy="1e-5" izz="1e-5"/></inertial>
+    <visual>
+      <origin rpy="0 0 0" xyz="0 0 0"/>
+      <geometry><box size="0.05 0.04 0.03"/></geometry>
+      <material name="go2_black"/>
+    </visual>
+    <!-- optical frame aligned with camera x forward -->
+  </link>
+  <joint name="camera_optical_joint" type="fixed">
+    <origin rpy="${-PI/2.0} 0 ${-PI/2.0}" xyz="0 0 0"/>
+    <parent link="camera_link"/>
+    <child link="camera_optical_frame"/>
+  </joint>
+  <link name="camera_optical_frame">
+    <inertial><mass value="0.0001"/>
+      <inertia ixx="1e-8" iyy="1e-8" izz="1e-8"/></inertial>
+  </link>
+
+  <!-- ================= legs ================= -->
+  <!-- front : FL (+y, mirror left), FR (-y) ; rear : RL, RR -->
+  <xacro:go2_leg name="FL" mirror="1"  mirror_dae="True"  front_hind="1"/>
+  <xacro:go2_leg name="FR" mirror="-1" mirror_dae="False" front_hind="1"/>
+  <xacro:go2_leg name="RL" mirror="1"  mirror_dae="True"  front_hind="-1"/>
+  <xacro:go2_leg name="RR" mirror="-1" mirror_dae="False" front_hind="-1"/>
+
+</robot>

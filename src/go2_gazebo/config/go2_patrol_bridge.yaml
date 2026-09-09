@@ -1,0 +1,58 @@
+# ros_gz_bridge (parameter_bridge) configuration for the Go2 patrol sim.
+# ROS <-> Gazebo Sim topic pairs.
+#
+# Note: gz side topic names must be confirmed against `gz topic -l` after first
+# launch (gz-sim advertises sensor <topic> entries, usually with a leading '/').
+
+# ---- commands: ROS -> gz ----
+# gz-sim 10's VelocityControl subscribes to the model-scoped
+# /model/go2/cmd_vel (confirmed against a live server), so the ROS /cmd_vel
+# must be bridged there, not to the bare /cmd_vel.
+- ros_topic_name: "/cmd_vel"
+  gz_topic_name: "/model/go2/cmd_vel"
+  ros_type_name: "geometry_msgs/msg/Twist"
+  gz_type_name: "gz.msgs.Twist"
+  direction: ROS_TO_GZ
+
+- ros_topic_name: "/go2/joint_trajectory"
+  gz_topic_name: "/model/go2/joint_trajectory"
+  ros_type_name: "trajectory_msgs/msg/JointTrajectory"
+  gz_type_name: "gz.msgs.JointTrajectory"
+  direction: ROS_TO_GZ
+
+# ---- sensors: gz -> ROS ----
+- ros_topic_name: "/scan"
+  gz_topic_name: "/scan"
+  ros_type_name: "sensor_msgs/msg/LaserScan"
+  gz_type_name: "gz.msgs.LaserScan"
+  direction: GZ_TO_ROS
+
+- ros_topic_name: "/imu/data"
+  gz_topic_name: "/imu"
+  ros_type_name: "sensor_msgs/msg/Imu"
+  gz_type_name: "gz.msgs.IMU"
+  direction: GZ_TO_ROS
+
+- ros_topic_name: "/camera/color/image_raw"
+  gz_topic_name: "/rgb/image"
+  ros_type_name: "sensor_msgs/msg/Image"
+  gz_type_name: "gz.msgs.Image"
+  direction: GZ_TO_ROS
+
+- ros_topic_name: "/camera/color/camera_info"
+  gz_topic_name: "/rgb/image/camera_info"
+  ros_type_name: "sensor_msgs/msg/CameraInfo"
+  gz_type_name: "gz.msgs.CameraInfo"
+  direction: GZ_TO_ROS
+
+- ros_topic_name: "/camera/depth/image_raw"
+  gz_topic_name: "/depth/image"
+  ros_type_name: "sensor_msgs/msg/Image"
+  gz_type_name: "gz.msgs.Image"
+  direction: GZ_TO_ROS
+
+- ros_topic_name: "/camera/depth/camera_info"
+  gz_topic_name: "/depth/image/camera_info"
+  ros_type_name: "sensor_msgs/msg/CameraInfo"
+  gz_type_name: "gz.msgs.CameraInfo"
+  direction: GZ_TO_ROS

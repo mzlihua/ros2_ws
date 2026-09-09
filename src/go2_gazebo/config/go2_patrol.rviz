@@ -1,0 +1,76 @@
+Panels:
+  - Class: rviz_common/Displays
+    Name: Displays
+  - Class: rviz_common/Views
+    Name: Views
+    CurrentViewClass: rviz_default_plugins/Orbit
+Visualization Manager:
+  Class: ""
+  Displays:
+    - Class: rviz_default_plugins/Grid
+      Enabled: true
+      Name: Grid
+      Plane Cell Count: 20
+    - Class: rviz_default_plugins/TF
+      Enabled: true
+      Name: TF
+      Frame Timeout: 15
+    - Class: rviz_default_plugins/RobotModel
+      Enabled: true
+      Name: RobotModel
+      Description Source: Topic
+      Description Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /robot_description
+      Visual Enabled: true
+    - Class: rviz_default_plugins/LaserScan
+      Enabled: true
+      Name: LaserScan
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Best Effort
+        Value: /scan
+      Size (Pixels): 3
+      Color: 255; 0; 0
+    - Class: rviz_default_plugins/Odometry
+      Enabled: true
+      Name: Odometry
+      Topic:
+        Depth: 5
+        Reliability Policy: Reliable
+        Value: /odom
+      Shape: Axes
+    - Class: rviz_default_plugins/Camera
+      Enabled: false
+      Name: RGB Camera
+      Topic:
+        Depth: 5
+        Reliability Policy: Reliable
+        Value: /camera/color/image_raw
+      Image Rendering: overlay
+    - Class: rviz_default_plugins/Camera
+      Enabled: false
+      Name: Depth Camera
+      Topic:
+        Depth: 5
+        Reliability Policy: Reliable
+        Value: /camera/depth/image_raw
+      Image Rendering: overlay
+  Global Options:
+    Fixed Frame: odom
+    Background Color: 48; 48; 48
+  Views:
+    Current:
+      Class: rviz_default_plugins/Orbit
+      Distance: 3.0
+      Focal Point:
+        X: 0
+        Y: 0
+        Z: 0.4
+      Pitch: 0.5
+      Yaw: 0.8
