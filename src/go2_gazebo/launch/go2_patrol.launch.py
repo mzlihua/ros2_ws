@@ -11,6 +11,15 @@
 #   ros2 launch go2_gazebo go2_patrol.launch.py \
 #       scene_map:=/path/to/floorplan.pgm scene_res:=0.05      # own floor plan
 #   ros2 launch go2_gazebo go2_patrol.launch.py scan_noise:=0.0  # raw laser
+#   ros2 launch go2_gazebo go2_patrol.launch.py profile:=lite     # lighter
+#   ros2 launch go2_gazebo go2_patrol.launch.py profile:=min      # lidar+imu only
+#
+# profile (full|lite|min) picks which URDF sensors the generated SDF keeps --
+# full = rgb+depth cameras; lite = rgb only (320x240@15); min = no cameras.
+# NOTE: sensor payload does NOT move RTF on the reference iGPU box (dropping
+# all cameras still measures RTF 0.67 at a 1 ms physics step).  Real-time is a
+# physics-step knob (see phys_step: world default 2 ms -> RTF ~1.0); the
+# profiles are for perception / shared-GPU budgets (see go2_urdf2sdf.py).
 #
 # Drive it from a terminal:
 #   ros2 run teleop_twist_keyboard teleop_twist_keyboard
@@ -59,6 +68,18 @@ def generate_launch_description():
     scan_noise_arg = DeclareLaunchArgument(
         'scan_noise', default_value='0.015',
         description='gaussian stddev (m) added to /scan (0 = pass-through)')
+    profile_arg = DeclareLaunchArgument(
+        'profile', default_value='full',
+        description='sensor profile: full (rgb+depth) | lite (rgb 320x240, '
+                    'no depth) | min (lidar+imu only) -- choose which sensors '
+                    'the generated SDF carries (perception / GPU budget). '
+                    'Does NOT change RTF: that is the phys_step knob')
+    phys_step_arg = DeclareLaunchArgument(
+        'phys_step', default_value='',
+        description='physics <max_step_size> seconds override (default: use '
+                    'the world file value 0.002 -- real-time on the reference '
+                    'iGPU box).  Pass 0.001 for tighter steps when contact/'
+                    'fidelity matters (e.g. future physics-walking work)')
 
     demo_s = LaunchConfiguration('demo')
     gui = LaunchConfiguration('gui')
@@ -72,6 +93,10 @@ def generate_launch_description():
         res = float(context.perform_substitution(
             LaunchConfiguration('scene_res')))
         headless = context.perform_substitution(gui).strip().lower() == 'false'
+        profile = context.perform_substitution(
+            LaunchConfiguration('profile')).strip()
+        phys_step = context.perform_substitution(
+            LaunchConfiguration('phys_step')).strip()
 
         scenery = scenery_path
         if map_pgm:
@@ -92,7 +117,9 @@ def generate_launch_description():
              '--share', desc_share,
              '--scenery', scenery,
              '--out', world_out,
-             '--spawn-z', '0.32'],
+             '--spawn-z', '0.32',
+             '--profile', profile] +
+            (['--phys-step', phys_step] if phys_step else []),
             capture_output=True, text=True)
         if r.returncode != 0:
             raise RuntimeError('go2_urdf2sdf.py failed:\n' + r.stderr)
@@ -159,5 +186,6 @@ def generate_launch_description():
 
     return LaunchDescription([
         demo_arg, gui_arg, scene_map_arg, scene_res_arg, scan_noise_arg,
+        profile_arg, phys_step_arg,
         gz_action, rsp, driver, bridge, scan_noise, demo, rviz, hint,
     ])

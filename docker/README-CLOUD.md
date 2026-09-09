@@ -92,7 +92,8 @@ RTF   : 0.98 (OK)   sim 5.9 s per 6.0 wall s   # 接近 1 = 实时
 drive : odom x 0.000 -> 1.9 m at 0.5 m/s over 4 s (OK)   # 巡逻链路活着
 VERDICT: PASS
 ```
-`RTF < 0.85` 建议升 vCPU 或 `cloud_run.sh` 不带相机重跑；内存低于几百 MB 时换大内存规格。
+`RTF < 0.85` 的瓶颈是**单线程物理步长**，不是传感器（本机实测去掉全部相机 RTF 仍 0.67@1ms）
+——先 `phys_step:=0.002` 重跑；物理线程吃单核，真不够再升 CPU/换带更高主频的机器；内存低于几百 MB 时换大内存规格。
 
 ## 常见坑
 

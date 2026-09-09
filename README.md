@@ -26,9 +26,26 @@ source install/setup.bash
 # 无界面运行（若只在终端验证），或去掉 gui:=false 以打开 gz GUI + RViz
 ros2 launch go2_gazebo go2_patrol.launch.py gui:=false
 
+# 按配置跑（档位见下）：
+ros2 launch go2_gazebo go2_patrol.launch.py profile:=lite     # 去 depth、rgb 320x240@15
+ros2 launch go2_gazebo go2_patrol.launch.py profile:=min      # 仅 lidar+imu（无相机）
+ros2 launch go2_gazebo go2_patrol.launch.py phys_step:=0.001  # 高保真物理步长（接触/调参时）
+
 # 另一个终端里手动驾驶（或在启动命令加 demo:=15 自动巡游 15 秒）
 ros2 run teleop_twist_keyboard teleop_twist_keyboard
 ```
+
+**配置档位**（launch `profile:=full|lite|min`，缺省 full）控制生成 SDF 里带哪些传感器：
+
+| profile | 传感器 | 用途 |
+|---|---|---|
+| `full` | imu + lidar(360) + rgb 640×480@30 + depth | 默认完整传感器 |
+| `lite` | imu + lidar(360) + rgb 320×240@15 | 少一路深度渲染，更省 |
+| `min` | imu + lidar(360) | 纯雷达/里程测试，最省 |
+
+**物理步长**：世界缺省 `max_step_size=0.002`（2ms）——实测这是本机集显能否实时的关键
+（1ms 步长每步约耗 1.5ms 墙钟 → RTF≈0.67，且裁剪相机无用；2ms 全传感器 RTF≈0.98）。
+当前运动学巡检零重力，2ms 不影响结果；将来真实接触行走再 `phys_step:=0.001`。
 
 ### 换成你自己的平面图（占用栅格图）
 
@@ -72,14 +89,17 @@ python3 src/go2_gazebo/scripts/go2_scene.py import --pgm my_map.pgm --res 0.05 \
 ### 渲染/性能（本机流畅优先）
 
 当前硬件为集显 + 内存紧张，场景刻意保持轻量：简单 box 几何、静态体合并在少量
-static model、无阴影、无大纹理、相机 640×480、激光 360@10Hz。若想截图开阴影：
-把 `worlds/go2_patrol.sdf` 中 `sun` 的 `cast_shadows` 临时改 `true`。
+static model、无阴影、无大纹理、激光 360@10Hz。物理步长 2ms + full 传感器在本机
+**可实时**（`cloud_bench.py` 实测 RTF≈0.98 PASS）；传感器渲染不是瓶颈（去掉相机
+RTF 仍 0.67），瓶颈是单线程物理步长（见"配置档位"段）。若想截图开阴影：把
+`worlds/go2_patrol.sdf` 中 `sun` 的 `cast_shadows` 临时改 `true`。
 
 ## 在云服务器上跑（按量计费 / 需 GPU 时）
 
-本机跑不稳实时（`cloud_bench.py` 实测 RTF≈0.67），需要实时交互或重仿真时换按量云
-服务器。仓库自带 Docker 工具链（镜像 = ubuntu:26.04 + ROS Lyrical 纯工具链，代码
-bind-mount，换机零重装、改代码不用重建镜像），用法见 `docker/README-CLOUD.md`：
+当前巡检仿真在本机已能实时（full 档 RTF≈0.98）；云服务器留给**将来 C：真实物理行走**
+（接触求解重一个量级、需 1ms 级步长和调参时长）或想并行多开/超大场景时。仓库自带
+Docker 工具链（镜像 = ubuntu:26.04 + ROS Lyrical 纯工具链，代码 bind-mount，换机零
+重装、改代码不用重建镜像），用法见 `docker/README-CLOUD.md`：
 
 ```bash
 bash scripts/cloud_setup.sh            # 一次性装 docker（GPU 机加 --gpu）

@@ -155,7 +155,10 @@ def main():
             issues.append('RTF %.2f too low -> raise vCPU' % rtf)
         elif rtf < 0.85:
             rtf_v = 'WEAK'
-            issues.append('RTF %.2f < 0.85 -> raise vCPU, or disable cameras' % rtf)
+            # Physics step is the RTF lever (sensors are not): 0.002 in the
+            # world gives ~1.0 on the reference iGPU box; smaller = slower.
+            issues.append('RTF %.2f < 0.85 -> relaunch with phys_step:=0.002 '
+                          '(or more vCPU/cores for the physics thread)' % rtf)
         else:
             rtf_v = 'OK'
     else:

@@ -25,7 +25,16 @@ Usage:
       --share  <install/share/go2_description> \
       --scenery <go2_patrol.sdf> \
       --out    <generated_world.sdf> \
-      [--spawn-z 0.32] [--yaw 0.0] [--lidar-z 0.10]
+      [--spawn-z 0.32] [--yaw 0.0] [--lidar-z 0.10] \
+      [--profile full|lite|min]
+
+Profiles (which URDF sensors make it into the SDF).  These are a perception /
+shared-GPU budget knob -- on the reference iGPU box they do NOT move RTF
+(dropping every camera still gives RTF 0.67 at a 1 ms physics step); real-time
+is controlled by --phys-step (world default 2 ms -> RTF ~1.0).
+  full  imu + lidar(360@10) + rgb(640x480@30) + depth(640x480@15)
+  lite  imu + lidar(360@10) + rgb(320x240@15)            (depth dropped)
+  min   imu + lidar(360@10)                                (no cameras)
 """
 
 import argparse
@@ -236,13 +245,18 @@ def add_sensor(parent, kind, cfg, urdf, extra):
                 type='camera' if kind == 'rgb' else 'depth_camera')
         sub(s, 'topic', 'rgb/image' if kind == 'rgb' else 'depth/image')
         sub(s, 'always_on', '1')
-        sub(s, 'update_rate', '30' if kind == 'rgb' else '15')
+        # full: 640x480 (rgb 30 / depth 15); lite: 320x240@15 for the rgb.
+        # (depth is only ever emitted in the `full` profile.)
+        w = extra.get('cam_w', 640)
+        h = extra.get('cam_h', 480)
+        hz = extra.get('cam_hz', 30 if kind == 'rgb' else 15)
+        sub(s, 'update_rate', str(hz))
         sub(s, 'visualize', 'false')
         cam = sub(s, 'camera')
         sub(cam, 'horizontal_fov', '1.089')
         img = sub(cam, 'image')
-        sub(img, 'width', '640')
-        sub(img, 'height', '480')
+        sub(img, 'width', str(w))
+        sub(img, 'height', str(h))
         sub(img, 'format', 'R8G8B8' if kind == 'rgb' else 'R_FLOAT32')
         clip = sub(cam, 'clip')
         sub(clip, 'near', '0.05')
@@ -330,7 +344,12 @@ def build_model(urdf, share_dir, extra):
                 sub(ii, tag, '0')
 
         # ---- sensors (from <gazebo reference=link> blocks) ----
+        profile = extra['profile']
         for kind, cfg in sensors_for(name, urdf):
+            if kind == 'depth' and profile != 'full':
+                continue          # depth (R_FLOAT32) is the heaviest render pass
+            if kind == 'rgb' and profile == 'min':
+                continue          # no cameras at all
             add_sensor(l, kind, cfg, urdf, extra)
 
     # ---- joints ----
@@ -408,6 +427,11 @@ def main():
     ap.add_argument('--spawn-z', type=float, default=0.32)
     ap.add_argument('--yaw', type=float, default=0.0)
     ap.add_argument('--lidar-z', type=float, default=0.10)
+    ap.add_argument('--profile', choices=('full', 'lite', 'min'),
+                    default='full', help='sensor profile (see module docstring)')
+    ap.add_argument('--phys-step', default='',
+                    help='override <max_step_size> seconds in the output world '
+                         '(default: keep the world file\'s value, 0.002)')
     args = ap.parse_args()
 
     if not os.path.isdir(os.path.join(args.share, 'dae')):
@@ -415,7 +439,10 @@ def main():
                  % args.share)
 
     urdf = URDF(args.urdf)
-    extra = dict(spawn_z=args.spawn_z, yaw=args.yaw, lidar_z=args.lidar_z)
+    extra = dict(spawn_z=args.spawn_z, yaw=args.yaw, lidar_z=args.lidar_z,
+                 profile=args.profile)
+    if args.profile == 'lite':
+        extra.update(cam_w=320, cam_h=240, cam_hz=15)
 
     # rewrite mesh URIs package://go2_description/... -> file://<share>/...
     for link in urdf.root.iter('mesh'):
@@ -433,6 +460,16 @@ def main():
         sys.exit('error: scenery %s missing marker %s' % (args.scenery, marker))
     xml_str = ET.tostring(model, encoding='unicode')
     world = world.replace(marker, xml_str, 1)
+
+    # optional physics step override (patches the world <physics> block)
+    if args.phys_step:
+        patched = re.sub(
+            r'(<max_step_size>)[^<]*(</max_step_size>)',
+            lambda m: m.group(1) + args.phys_step + m.group(2),
+            world, count=1)
+        if patched == world:
+            sys.exit('error: no <max_step_size> found for --phys-step')
+        world = patched
 
     with open(args.out, 'w', encoding='utf-8') as fh:
         fh.write(world)
