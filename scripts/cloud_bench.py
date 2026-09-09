@@ -6,15 +6,16 @@ Watches the running headless sim and answers the only question that matters on
 a metered server: *is this instance big enough for real time?*
 
 Metrics
-  - /scan_raw & /imu/data message rates (they tick at sim time)
-  - real-time factor RTF ~= (sim time elapsed) / (wall time elapsed), measured
-    from gz message header stamps
-  - lidar richness (finite returns -> does the imported scene occlude well?)
-  - free memory + load average (billing/memory guardrail)
+  - real-time factor (RTF): sim-clock advance vs wall-clock, read from the gz
+    /clock bridge.  Sensor header stamps are NOT usable here (verified: this
+    gz-sim 10 stack emits non-monotonic /scan_raw & /imu stamps), so /clock is
+    the authoritative sim time source.
+  - /scan_raw & /imu/data wall arrival rates + lidar richness (finite rays).
+  - free memory + load average (billing/memory guardrail).
+  - drive sanity: publish /cmd_vel at 0.5 m/s for 4 s, confirm /odom integrates
+    (go2_driver integrates on a wall-clock timer, so ~2 m is expected).
 
-Then drives /cmd_vel at 0.5 m/s for a few seconds to confirm /odom integrates
-(sanity that the patrol pipeline is alive), stops, prints PASS/FAIL.
-Exit code 0 = this instance can host the sim; 1 = too weak / broken.
+Verdict PASS/FAIL; exit code 0 = this instance can host the sim, 1 otherwise.
 """
 import math
 import sys
@@ -26,31 +27,40 @@ from rclpy.qos import QoSProfile, ReliabilityPolicy
 from geometry_msgs.msg import Twist
 from sensor_msgs.msg import Imu, LaserScan
 from nav_msgs.msg import Odometry
+from rosgraph_msgs.msg import Clock
 
-BE = QoSProfile(depth=10, reliability=ReliabilityPolicy.BEST_EFFORT)
+BE = QoSProfile(depth=50, reliability=ReliabilityPolicy.BEST_EFFORT)
+DRIVE_SPEED = 0.5   # m/s
+DRIVE_SECS = 4.0
 
 
 class Bench(Node):
     def __init__(self):
         super().__init__('cloud_bench')
-        self.scan_stamps = []   # (ros_header_sec_sim, wall_sec)
-        self.scan_frames = []
+        self.scan_frames = 0
         self.imu_count = 0
         self.odom = None
+        self.clk = []          # sim-time samples from /clock
+        self.latest_scan = None
         self.create_subscription(LaserScan, '/scan_raw', self._scan, BE)
         self.create_subscription(Imu, '/imu/data', self._imu, BE)
         self.create_subscription(Odometry, '/odom', self._odom, BE)
+        self.create_subscription(Clock, '/clock', self._clock_cb, BE)
         self.cmd = self.create_publisher(Twist, '/cmd_vel', 10)
 
     def _scan(self, m):
-        now = time.monotonic()
-        self.scan_stamps.append((m.header.stamp.sec + m.header.stamp.nanosec * 1e-9, now))
-        del self.scan_stamps[:-2000]
-        self.scan_frames.append(m)
-        del self.scan_frames[:-200]
+        self.scan_frames += 1
+        self.latest_scan = m
 
     def _imu(self, _m):
         self.imu_count += 1
+
+    def _odom(self, m):
+        self.odom = m
+
+    def _clock_cb(self, m):   # NB: do NOT name this _clock (rclpy uses it)
+        self.clk.append(m.clock.sec + m.clock.nanosec * 1e-9)
+        del self.clk[:-4000]
 
 
 def mem_free_mb():
@@ -70,7 +80,8 @@ def wait_ready(node, timeout):
     t0 = time.time()
     while time.time() - t0 < timeout:
         rclpy.spin_once(node, timeout_sec=0.2)
-        if len(node.scan_frames) >= 3 and node.imu_count > 0 and node.odom:
+        if node.scan_frames >= 3 and node.imu_count > 0 and \
+                node.odom is not None and len(node.clk) >= 20:
             return True
     return False
 
@@ -78,9 +89,7 @@ def wait_ready(node, timeout):
 def main():
     rclpy.init()
     b = Bench()
-    ok = wait_ready(b, timeout=60)
-    if not ok:
-        # help the human: surface the sim log written by entrypoint.sh
+    if not wait_ready(b, timeout=60):
         try:
             with open('/tmp/sim.log') as fh:
                 tail = ''.join(fh.readlines()[-15:])
@@ -89,69 +98,84 @@ def main():
         print('SIM NEVER CAME UP. last sim log:\n%s' % tail)
         return 1
 
-    # settle ~2 s, then measure rates + RTF over ~6 wall seconds
-    rclpy.spin_once(b, timeout_sec=0.1)
-    b.scan_stamps.clear()
-    b.scan_frames.clear()
-    b.imu_count = 0
-    wall0 = time.monotonic()
-    end = wall0 + 6.0
-    while time.monotonic() < end:
+    # ---- warm up ~8 s (shader compile / catch-up inflate early RTF) --------
+    t_warm = time.monotonic()
+    while time.monotonic() - t_warm < 8.0:
         rclpy.spin_once(b, timeout_sec=0.1)
-    wall_dt = time.monotonic() - wall0
 
-    stamps = b.scan_stamps
-    n = len(stamps)
-    if n >= 2:
-        sim_dt = stamps[-1][0] - stamps[0][0]
-        scan_hz = (n - 1) / wall_dt if wall_dt > 0 else 0.0
-        rtf = sim_dt / wall_dt if wall_dt > 0 else 0.0
+    # ---- measure window: rates + RTF over ~6 wall seconds ------------------
+    b.scan_frames = 0
+    b.imu_count = 0
+    b.clk = []
+    w0 = time.monotonic()
+    while time.monotonic() - w0 < 6.0:
+        rclpy.spin_once(b, timeout_sec=0.05)
+    wall = time.monotonic() - w0
+    scan_hz = b.scan_frames / wall
+    imu_hz = b.imu_count / wall
+    if len(b.clk) >= 2:
+        sim = b.clk[-1] - b.clk[0]
+        rtf = sim / wall if wall > 0 else 0.0
     else:
-        rtf, scan_hz, sim_dt = 0.0, 0.0, 0.0
-    imu_hz = b.imu_count / wall_dt if wall_dt > 0 else 0.0
+        sim, rtf = 0.0, 0.0
+    clock_ok = len(b.clk) >= 2
 
-    # lidar richness on the newest frame
+    # lidar richness: finite rays on the fullest frame we saw
     fin = -1
-    if b.scan_frames:
-        best = max(b.scan_frames,
-                   key=lambda m: sum(math.isfinite(r) for r in m.ranges))
-        fin = sum(math.isfinite(r) for r in best.ranges)
+    if b.latest_scan is not None:
+        fin = sum(math.isfinite(r) for r in b.latest_scan.ranges)
+        total = len(b.latest_scan.ranges)
+    else:
+        total = -1
 
-    # sanity: drive 4 s, watch /odom integrate
-    c = Twist(); c.linear.x = 0.5
+    # ---- drive sanity: continuous 0.5 m/s for 4 s, watch /odom -------------
     x0 = b.odom.pose.pose.position.x if b.odom else 0.0
-    for _ in range(20):
+    c = Twist(); c.linear.x = DRIVE_SPEED
+    sent = 0
+    d0 = time.monotonic()
+    while time.monotonic() - d0 < DRIVE_SECS:
         b.cmd.publish(c)
-        rclpy.spin_once(b, timeout_sec=0.2)
+        sent += 1
+        rclpy.spin_once(b, timeout_sec=0.02)
     x1 = b.odom.pose.pose.position.x if b.odom else x0
     stop = Twist()
-    for _ in range(3):
+    for _ in range(5):
         b.cmd.publish(stop)
-        rclpy.spin_once(b, timeout_sec=0.1)
+        rclpy.spin_once(b, timeout_sec=0.02)
+    travelled = x1 - x0
+    drive_ok = travelled > 0.8   # ~2.0 m expected at 0.5 m/s over 4 s
 
+    # ---- verdicts -----------------------------------------------------------
     issues = []
     if fin < 20:
         issues.append('lidar returns too sparse (%d finite)' % fin)
-    if rtf >= 0.85:
-        rtf_v = 'OK'
-    elif rtf >= 0.4:
-        rtf_v = 'WEAK'
-        issues.append('RTF %.2f < 0.85 -> raise vCPU, or disable sensors' % rtf)
+    if clock_ok:
+        if rtf < 0.4:
+            rtf_v = 'FAIL'
+            issues.append('RTF %.2f too low -> raise vCPU' % rtf)
+        elif rtf < 0.85:
+            rtf_v = 'WEAK'
+            issues.append('RTF %.2f < 0.85 -> raise vCPU, or disable cameras' % rtf)
+        else:
+            rtf_v = 'OK'
     else:
-        rtf_v = 'FAIL'
-        issues.append('RTF %.2f too low' % rtf)
+        rtf_v = 'n/a'
+        issues.append('no /clock messages (bridge?) -> RTF unknown')
+    if not drive_ok:
+        issues.append('odom moved %.2f m in %.0f s at %.1f m/s -> check driver/cmd'
+                      % (travelled, DRIVE_SECS, DRIVE_SPEED))
 
     print('\n========== cloud_bench ==========')
-    print('lidar  : %.1f Hz (wall) | %d finite rays / %d' % (scan_hz, fin,
-          len(best.ranges) if b.scan_frames else -1))
+    print('rtf    : %s' % (('%.2f (%s)' % (rtf, rtf_v)) if clock_ok else rtf_v))
+    print('lidar  : %.1f Hz (wall) | %d finite rays / %d' % (scan_hz, fin, total))
     print('imu    : %.1f Hz (wall)' % imu_hz)
-    print('RTF    : %.2f (%s)   sim %.1f s per %.1f wall s' % (rtf, rtf_v, sim_dt, wall_dt))
-    print('drive  : odom x %.3f -> %.3f m at 0.5 m/s over 4 s (%s)' %
-          (x0, x1, 'OK' if (x1 - x0) > 1.2 else 'check driver'))
+    print('drive  : %d cmds over %.0f s -> odom x %.2f m (%s)'
+          % (sent, DRIVE_SECS, travelled,
+             'OK' if drive_ok else 'check driver'))
     print('mem    : %d MB free | load %s' % (mem_free_mb(), ' '.join(loadavg())))
-    verdict = 'PASS' if not issues else 'FAIL'
     for i in issues:
         print('  -', i)
+    verdict = 'PASS' if not issues else 'FAIL'
     print('==================================')
     print('VERDICT:', verdict)
     return 0 if verdict == 'PASS' else 1

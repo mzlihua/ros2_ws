@@ -75,6 +75,19 @@ python3 src/go2_gazebo/scripts/go2_scene.py import --pgm my_map.pgm --res 0.05 \
 static model、无阴影、无大纹理、相机 640×480、激光 360@10Hz。若想截图开阴影：
 把 `worlds/go2_patrol.sdf` 中 `sun` 的 `cast_shadows` 临时改 `true`。
 
+## 在云服务器上跑（按量计费 / 需 GPU 时）
+
+本机跑不稳实时（`cloud_bench.py` 实测 RTF≈0.67），需要实时交互或重仿真时换按量云
+服务器。仓库自带 Docker 工具链（镜像 = ubuntu:26.04 + ROS Lyrical 纯工具链，代码
+bind-mount，换机零重装、改代码不用重建镜像），用法见 `docker/README-CLOUD.md`：
+
+```bash
+bash scripts/cloud_setup.sh            # 一次性装 docker（GPU 机加 --gpu）
+bash scripts/cloud_run.sh -m selfcheck # 首次构建 + 工具链自检
+bash scripts/cloud_run.sh -m bench -A 45   # 自动压测（RTF/话题/内存），45 分钟后宿主机自动关机
+bash scripts/cloud_run.sh -m gui       # 浏览器 noVNC 看仿真画面（:6080）
+```
+
 ## 后续（未做，计划放云服务器）
 
 - **C：真实物理落地行走**（重力 + 脚底碰撞 + 步态平衡控制）：改动大、需长时间
@@ -87,4 +100,6 @@ static model、无阴影、无大纹理、相机 640×480、激光 360@10Hz。�
   `go2_driver`(C++)、`go2_scan_noise`(激光噪声)、bridge 配置、launch、RViz 布局
 - `src/_deprecated` — 早期简化版 xacro 建模与旧 world（已弃用，仅存档）
 - `build/`、`install/`、`log/` — colcon 生成产物，已通过 `.gitignore` 忽略
-  （本仓库只跟踪 `src/` 目录与 README）
+- `docker/` — 云端 Docker 工具链（Dockerfile / entrypoint.sh / README-CLOUD.md）
+- `scripts/` — 云主机脚本（`cloud_setup.sh` 一次性、`cloud_run.sh` 每次跑、`cloud_bench.py` 压测）
+- `.dockerignore` — 精简 Docker 构建上下文
